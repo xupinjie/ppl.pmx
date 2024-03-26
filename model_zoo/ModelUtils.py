@@ -3,7 +3,7 @@ from typing import List
 
 class __TensorDumper__:
     def __init__(self):
-        self.enable_dump = False
+        self.enable_dump = True
         self.dir = "."
         self.step = 0
         self.dump_steps = []
@@ -30,7 +30,7 @@ class __TensorDumper__:
 
         filename = "step{}_{}-{}-{}.bin".format(self.step, name, shape_str, type_dict[X.dtype])
 
-        X.cpu().numpy().tofile(self.dir + "/" + filename)
+        X.cpu().numpy().tofile(self.dir + "/" + name)
 
 
 class __Tokenizer__:

@@ -29,6 +29,9 @@ sys.path.append(os.path.dirname(os.path.realpath(__file__)) + "/../..")
 from ModelLayers import GroupNorm
 import torch_function as PMX
 
+import ModelUtils
+TensorDumper = ModelUtils.__TensorDumper__()
+
 class Encoder(nn.Module):
     def __init__(
         self,
@@ -194,11 +197,13 @@ class Decoder(nn.Module):
     def forward(self, z, latent_embeds=None):
         sample = z
         sample = self.conv_in(sample)
+        TensorDumper.dump(sample.detach(), ".conv_in.Conv")
 
         upscale_dtype = next(iter(self.up_blocks.parameters())).dtype
         # middle
         sample = self.mid_block(sample, latent_embeds)
         sample = sample.to(upscale_dtype)
+        return sample
 
         # up
         for up_block in self.up_blocks:
@@ -237,7 +242,8 @@ if __name__ == "__main__":
     model.load_state_dict(state_dict)
 
     '''
-    x = torch.ones([1, 4, 64, 64], dtype=torch.float16)
+    torch.manual_seed(1)
+    x = torch.randn([1, 4, 64, 64], dtype=torch.float16)
     model = Decoder(in_channels = vae_params['latent_channels'],
                             out_channels = vae_params['out_channels'],
                             up_block_types = vae_params['up_block_types'],
