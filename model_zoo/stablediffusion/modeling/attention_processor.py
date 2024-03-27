@@ -11,6 +11,9 @@ import torch_function as PMX
 from ModelLayers import GroupNorm
 from ModelParallel import ColumnParallelLinear, RowParallelLinear
 
+import ModelUtils
+TensorDumper = ModelUtils.__TensorDumperV2__()
+
 class Attention(nn.Module):
     r"""
     A cross attention layer.
@@ -577,6 +580,7 @@ class AttnProcessor2_0:
 
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
+        TensorDumper.dump(hidden_states.detach(), "/mid_block/attentions.0/Transpose")
 
         query = attn.to_q(hidden_states)
 
@@ -611,6 +615,10 @@ class AttnProcessor2_0:
                                         head_dim=head_dim,
                                         is_causal=False,
                                         num_kv_heads=attn.heads)
+        TensorDumper.dump(query.detach(), "/mid_block/attentions.0/Reshape_1")
+        TensorDumper.dump(key.detach(), "/mid_block/attentions.0/Reshape_2")
+        TensorDumper.dump(value.detach(), "/mid_block/attentions.0/Reshape_3")
+        TensorDumper.dump(hidden_states.detach(), "/mid_block/attentions.0/MultiHeadAttention")
 
 
         #import ipdb;ipdb.set_trace()
@@ -635,11 +643,13 @@ class AttnProcessor2_0:
         hidden_states = attn.to_out[0](hidden_states)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
+        TensorDumper.dump(hidden_states.detach(), "/mid_block/attentions.0/to_out.0/RowParallelLinear")
 
         if input_ndim == 4:
             # hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
             # import ipdb;ipdb.set_trace()
             hidden_states = hidden_states.transpose(-1, -2)
+            TensorDumper.dump(hidden_states.detach(), "/mid_block/attentions.0/Transpose_1")
             hidden_states = PMX.reshape(hidden_states, [0, channel, height, width])
 
         if attn.residual_connection:

@@ -30,7 +30,7 @@ from ModelLayers import GroupNorm
 import torch_function as PMX
 
 import ModelUtils
-TensorDumper = ModelUtils.__TensorDumper__()
+TensorDumper = ModelUtils.__TensorDumperV2__()
 
 class Encoder(nn.Module):
     def __init__(
@@ -197,7 +197,7 @@ class Decoder(nn.Module):
     def forward(self, z, latent_embeds=None):
         sample = z
         sample = self.conv_in(sample)
-        TensorDumper.dump(sample.detach(), ".conv_in.Conv")
+        TensorDumper.dump(sample.detach(), "/conv_in/Conv")
 
         upscale_dtype = next(iter(self.up_blocks.parameters())).dtype
         # middle

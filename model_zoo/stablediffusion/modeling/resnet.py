@@ -17,7 +17,7 @@ from ModelLayers import GroupNorm
 #from ModelParallel import ColumnParallelLinear, RowParallelLinear, ParallelEmbedding
 
 import ModelUtils
-TensorDumper = ModelUtils.__TensorDumper__()
+TensorDumper = ModelUtils.__TensorDumperV2__()
 
 def get_activation(act_fn):
     if act_fn in ["swish", "silu"]:
@@ -171,10 +171,10 @@ class ResnetBlock2D(nn.Module):
             hidden_states = self.norm1(hidden_states, temb)
         else:
             hidden_states = self.norm1(hidden_states)
-        TensorDumper.dump(hidden_states.detach(), ".mid_block.resnets.{}.norm1.GroupNorm".format(self.layer_id))
+        TensorDumper.dump(hidden_states.detach(), "/mid_block/resnets/{}/norm1/GroupNorm".format(self.layer_id))
 
         hidden_states = self.nonlinearity(hidden_states)
-        TensorDumper.dump(hidden_states.detach(), ".mid_block.resnets.{}.SiLU".format(self.layer_id))
+        TensorDumper.dump(hidden_states.detach(), "/mid_block/resnets/{}/SiLU".format(self.layer_id))
 
         if self.upsample is not None:
             # upsample_nearest_nhwc fails with large batch sizes. see https://github.com/huggingface/diffusers/issues/984
@@ -204,7 +204,7 @@ class ResnetBlock2D(nn.Module):
             )
 
         hidden_states = self.conv1(hidden_states)
-        TensorDumper.dump(hidden_states.detach(), ".mid_block.resnets.{}.conv1.Conv".format(self.layer_id))
+        TensorDumper.dump(hidden_states.detach(), "/mid_block/resnets/{}/conv1/Conv".format(self.layer_id))
 
         if self.time_emb_proj is not None:
             if not self.skip_time_act:
@@ -218,18 +218,18 @@ class ResnetBlock2D(nn.Module):
             hidden_states = self.norm2(hidden_states, temb)
         else:
             hidden_states = self.norm2(hidden_states)
-        TensorDumper.dump(hidden_states.detach(), ".mid_block.resnets.{}.norm2.GroupNorm".format(self.layer_id))
+        TensorDumper.dump(hidden_states.detach(), "/mid_block/resnets/{}/norm2/GroupNorm".format(self.layer_id))
 
         if temb is not None and self.time_embedding_norm == "scale_shift":
             scale, shift = torch.chunk(temb, 2, dim=1)
             hidden_states = hidden_states * (1 + scale) + shift
 
         hidden_states = self.nonlinearity(hidden_states)
-        TensorDumper.dump(hidden_states.detach(), ".mid_block.resnets.{}.SiLU_1".format(self.layer_id))
+        TensorDumper.dump(hidden_states.detach(), "/mid_block/resnets/{}/SiLU_1".format(self.layer_id))
 
         hidden_states = self.dropout(hidden_states)
         hidden_states = self.conv2(hidden_states)
-        TensorDumper.dump(hidden_states.detach(), ".mid_block.resnets.{}.conv2.Conv".format(self.layer_id))
+        TensorDumper.dump(hidden_states.detach(), "/mid_block/resnets/{}/conv2/Conv".format(self.layer_id))
 
         if self.conv_shortcut is not None:
             input_tensor = self.conv_shortcut(input_tensor)
@@ -239,7 +239,7 @@ class ResnetBlock2D(nn.Module):
             output_tensor = (input_tensor + hidden_states) / self.output_scale_factor
         else:
             output_tensor = input_tensor + hidden_states
-        TensorDumper.dump(output_tensor.detach(), ".mid_block.resnets.{}.Add".format(self.layer_id))
+        TensorDumper.dump(output_tensor.detach(), "/mid_block/resnets/{}/Add".format(self.layer_id))
         return output_tensor
 
 
