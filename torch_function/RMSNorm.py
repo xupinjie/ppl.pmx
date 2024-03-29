@@ -67,6 +67,8 @@ def skip_rms_norm(X: torch.Tensor, weight: torch.Tensor, SkipIn: torch.Tensor = 
 
 
 if __name__ == "__main__":
+    torch.manual_seed(1)
+    
     class TestModule1(torch.nn.Module):
         def __init__(self, dim: int, eps: float = 1e-5) -> None:
             super().__init__()
@@ -82,23 +84,30 @@ if __name__ == "__main__":
         def __init__(self, dim: int, eps: float = 1e-5) -> None:
             super().__init__()
             self.eps = eps
-            self.weight = torch.nn.Parameter(torch.ones(dim))
+            self.weight = torch.nn.Parameter(torch.randn(dim, dtype=torch.float16))
 
 
         def forward(self, X: torch.Tensor, SkipIn: torch.Tensor):
             return skip_rms_norm(X, self.weight, SkipIn, -1, self.eps)
 
+    # test_op1 = TestModule1(4096, 1e-6)
 
-    test_op1 = TestModule1(4096, 1e-6)
-    test_op2 = TestModule2(4096, 1e-6)
+    name ="case1"
+    seq  = 8
+    dim  = 4096
 
-    input = torch.ones([8, 4096])
-    skip = torch.ones([8, 4096])
+    test_op2 = TestModule2(dim, 1e-6)
 
-    model_str1 = torch.onnx.export_to_pretty_string(
-        test_op1, (input), "RMSNorm1.onnx", opset_version=11)
-    model_str2 = torch.onnx.export_to_pretty_string(
-        test_op2, (input, skip), "RMSNorm2.onnx", opset_version=11)
+    input = torch.randn([seq, dim], dtype=torch.float16)
+    skip = torch.randn([seq, dim], dtype=torch.float16)
 
-    print(model_str1)
-    print(model_str2)
+    output1, output2 = test_op2.forward(input, skip)
+
+    input.numpy().tofile("../models/RMSNorm/{}/input-input.bin".format(name))
+    skip.numpy().tofile("../models/RMSNorm/{}/input-skip.bin".format(name))
+
+    output1.detach().numpy().tofile("../models/RMSNorm/{}/output1.bin".format(name))
+    output2.detach().numpy().tofile("../models/RMSNorm/{}/output2.bin".format(name))
+
+    torch.onnx.export(test_op2, (input, skip), "../models/RMSNorm/{}/model.onnx".format(name),
+       input_names=["input", "skip"], output_names=["output1","output2"], opset_version=11)

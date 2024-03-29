@@ -2,6 +2,10 @@ import torch
 
 from typing import Optional
 
+import sys
+sys.path.append("..")  # 添加上一级目录到sys.path
+from model_zoo import ModelUtils
+TensorDumper = ModelUtils.__TensorDumperV2__()
 
 class MultiHeadAttention(torch.autograd.Function):
     @staticmethod
@@ -74,9 +78,13 @@ class MultiHeadAttention(torch.autograd.Function):
             scores = scores + causal_mask
         if attn_mask is not None and attn_mask.numel() > 0:
             scores = scores + attn_mask.to(scores.device)[..., :seqlen_kv]
+        TensorDumper.dump(scores.detach(), "mha_kvt")
+
         scores = torch.nn.functional.softmax(scores.float(), dim=-1).type_as(_query)
+        TensorDumper.dump(scores.detach(), "mha_softmax")
         output = torch.matmul(scores, _value)
         output = output.transpose(1, 2).contiguous()
+        TensorDumper.dump(output.detach(), "mha_out")
 
         return output
 
@@ -103,26 +111,44 @@ if __name__ == "__main__":
                                     self.num_heads, self.head_dim, self.is_causal, self.num_kv_heads)
 
 
-    bs = 2
-    seqlen = 38
+    # bs = 1
+    # seqlen = 4096
+    # num_heads = 1
+    # num_kv_heads = 1
+    # head_dim = 512
+
+    name="case1"
+    bs = 1
+    seqlen = 15
     num_heads = 32
-    num_kv_heads = 8
+    num_kv_heads = 32
     head_dim = 128
 
-    q = torch.randn(bs, seqlen, num_heads, head_dim)
-    k = torch.randn(bs, seqlen, num_kv_heads, head_dim)
-    v = torch.randn(bs, seqlen, num_kv_heads, head_dim)
+    torch.manual_seed(1)
+    q = torch.randn(bs, seqlen, num_heads, head_dim, dtype=torch.float16)
+    k = torch.randn(bs, seqlen, num_kv_heads, head_dim, dtype=torch.float16)
+    v = torch.randn(bs, seqlen, num_kv_heads, head_dim, dtype=torch.float16)
 
-    attn_mask = torch.randn(bs, num_heads, seqlen, seqlen)
+    attn_mask = torch.randn(bs, num_heads, seqlen, seqlen, dtype=torch.float16)
 
-    test_op1 = TestModule1(num_heads, num_kv_heads, head_dim, True)
+    
+    test_op1 = TestModule1(num_heads, num_kv_heads, head_dim, False)
+    output = test_op1.forward(q, k, v)
 
-    model_str1 = torch.onnx.export_to_pretty_string(
-       test_op1, (q, k, v), "MultiHeadAttention1.onnx",
+    q.numpy().tofile("../models/MHA/{}/input1.bin".format(name))
+    k.numpy().tofile("../models/MHA/{}/input2.bin".format(name))
+    v.numpy().tofile("../models/MHA/{}/input3.bin".format(name))
+    output.numpy().tofile("../models/{}/MHA/output.bin".format(name))
+
+    model_str1 = torch.onnx.export(
+       test_op1, (q, k, v), "../models/MHA/{}/MultiHeadAttention1.onnx".format(name),
        input_names=["query", "key", "value"], output_names=["attention_output"], opset_version=11)
-    model_str2 = torch.onnx.export_to_pretty_string(
-       test_op1, (q, k, v, attn_mask), "MultiHeadAttention1.onnx",
-       input_names=["query", "key", "value", "mask"], output_names=["attention_output"], opset_version=11)
+    
+    
+    
+    # model_str2 = torch.onnx.export_to_pretty_string(
+    #    test_op1, (q, k, v, attn_mask), "MultiHeadAttention1.onnx",
+    #    input_names=["query", "key", "value", "mask"], output_names=["attention_output"], opset_version=11)
 
-    print(model_str1)
-    print(model_str2)
+    # print(model_str1)
+    # print(model_str2)

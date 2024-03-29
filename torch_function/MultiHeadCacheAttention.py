@@ -128,12 +128,13 @@ if __name__ == "__main__":
                                         query, current_key, current_value, start_pos, cache, scale, attn_mask,
                                         self.num_heads, self.head_dim, self.is_causal, 0,
                                         self.num_layer, self.layer_idx, self.quant_bit, self.quant_group)
+    torch.manual_seed(1)
 
-
-    bs = 2
-    seqlen = 16
+    name = "case1"
+    bs = 1
+    seqlen = 8
     kvlen = 32
-    num_heads = 32
+    num_heads = 128
     head_dim = 128
 
     num_layer = 2
@@ -141,33 +142,48 @@ if __name__ == "__main__":
     quant_group = 8
     quant_bit = 8
 
-    q = torch.randn(bs, seqlen, num_heads, head_dim)
-    k = torch.randn(bs, seqlen, num_heads, head_dim)
-    v = torch.randn(bs, seqlen, num_heads, head_dim)
+    q = torch.randn(bs, seqlen, num_heads, head_dim, dtype=torch.float16)
+    k = torch.randn(bs, seqlen, num_heads, head_dim, dtype=torch.float16)
+    v = torch.randn(bs, seqlen, num_heads, head_dim, dtype=torch.float16)
 
-    attn_mask = torch.randn(bs, num_heads, seqlen, seqlen)
+    attn_mask = torch.zeros(bs, num_heads, seqlen, seqlen, dtype=torch.float16)
 
     cache = torch.zeros([bs, num_layer, 2, kvlen, num_heads, head_dim], dtype=torch.int8)
-    scale = torch.zeros([bs, num_layer, 2, kvlen, num_heads, head_dim // quant_group])
+    scale = torch.zeros([bs, num_layer, 2, kvlen, num_heads, head_dim // quant_group], dtype=torch.float16)
     start_pos = torch.tensor([0], dtype=torch.int64)
 
     test_op1 = TestModule1(num_heads, head_dim, True, num_layer, layer_idx, quant_bit, quant_group)
     test_op2 = TestModule1(num_heads, head_dim, True, num_layer, layer_idx, 0, quant_group)
 
-    test_op1.forward(q, k, v, start_pos, cache, scale, attn_mask)
+    output = test_op1.forward(q, k, v, start_pos, cache, scale, attn_mask)
     
-    model_str1 = torch.onnx.export_to_pretty_string(
-       test_op1, (q, k, v, start_pos, cache, scale),
-       "MultiHeadAttention1.onnx", opset_version=11)
-    model_str2 = torch.onnx.export_to_pretty_string(
-       test_op1, (q, k, v, start_pos, cache, scale, attn_mask),
-       "MultiHeadAttention2.onnx", opset_version=11)
-    
-    cache = cache.to(q)
-    model_str3 = torch.onnx.export_to_pretty_string(
-       test_op2, (q, k, v, start_pos, cache, None, attn_mask),
-       "MultiHeadAttention3.onnx", opset_version=11)
+    q.numpy().tofile("../models/MHACache/{}/input_q.bin".format(name))
+    k.numpy().tofile("../models/MHACache/{}/input_k.bin".format(name))
+    v.numpy().tofile("../models/MHACache/{}/input_v.bin".format(name))
+    attn_mask.numpy().tofile("../models/MHACache/{}/input_attn_mask.bin".format(name))
+    cache.numpy().tofile("../models/MHACache/{}/input_cache.bin".format(name))
+    scale.numpy().tofile("../models/MHACache/{}/input_scale.bin".format(name))
+    start_pos.numpy().tofile("../models/MHACache/{}/input_start_pos.bin".format(name))
 
-    print(model_str1)
-    print(model_str2)
-    print(model_str3)
+    output.detach().numpy().tofile("../models/MHACache/{}/output.bin".format(name))
+    
+    model_str1 = torch.onnx.export(
+       test_op1, (q, k, v, start_pos, cache, scale),
+       "../models/MHACache/{}/model.onnx".format(name), opset_version=11)
+
+
+    # model_str1 = torch.onnx.export_to_pretty_string(
+    #    test_op1, (q, k, v, start_pos, cache, scale),
+    #    "MultiHeadAttention1.onnx", opset_version=11)
+    # model_str2 = torch.onnx.export_to_pretty_string(
+    #    test_op1, (q, k, v, start_pos, cache, scale, attn_mask),
+    #    "MultiHeadAttention2.onnx", opset_version=11)
+    
+    # cache = cache.to(q)
+    # model_str3 = torch.onnx.export_to_pretty_string(
+    #    test_op2, (q, k, v, start_pos, cache, None, attn_mask),
+    #    "MultiHeadAttention3.onnx", opset_version=11)
+
+    # print(model_str1)
+    # print(model_str2)
+    # print(model_str3)
