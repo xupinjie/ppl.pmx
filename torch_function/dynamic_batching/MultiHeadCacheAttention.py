@@ -8,7 +8,10 @@ if __name__ == "__main__":
 else:
     from .KeyValueCache import key_value_cache
     from .MultiHeadAttention import multi_head_attention
-
+import sys
+sys.path.append("../..")  # 添加上一级目录到sys.path
+from model_zoo import ModelUtils
+TensorDumper = ModelUtils.__TensorDumperV2__()
 
 class MultiHeadCacheAttention(torch.autograd.Function):
     @staticmethod
@@ -97,6 +100,8 @@ class MultiHeadCacheAttention(torch.autograd.Function):
             cache, scale, num_layer, layer_idx,
             quant_bit, quant_group, 1,
             cache_mode, cache_layout)
+        TensorDumper.dump(key.detach(), "key_value_cache_key")
+        TensorDumper.dump(value.detach(), "key_value_cache_value")
         
         output = multi_head_attention(
             query, key, value, seqstarts,
@@ -162,11 +167,12 @@ if __name__ == "__main__":
                                         self.num_layer, self.layer_idx, self.quant_bit, self.quant_group)
 
 
+    name = "case2"
     bs = 2
-    seqlen = 16
+    seqlen = 8
     kvlen = 32
     num_heads = 32
-    num_kv_heads = 2
+    num_kv_heads = 32
     head_dim = 128
 
     num_layer = 2
@@ -174,17 +180,17 @@ if __name__ == "__main__":
     quant_group = 8
     quant_bit = 8
 
-    q = torch.randn(bs * seqlen, num_heads, head_dim)
-    k = torch.randn(bs * seqlen, num_kv_heads, head_dim)
-    v = torch.randn(bs * seqlen, num_kv_heads, head_dim)
+    q = torch.randn(bs * seqlen, num_heads, head_dim, dtype=torch.float16)
+    k = torch.randn(bs * seqlen, num_kv_heads, head_dim, dtype=torch.float16)
+    v = torch.randn(bs * seqlen, num_kv_heads, head_dim, dtype=torch.float16)
 
-    attn_mask = torch.randn(bs * seqlen, bs * seqlen)
+    attn_mask = torch.zeros(bs * seqlen, bs * seqlen, dtype=torch.float16)
 
     seqstarts = torch.tensor([0, seqlen, seqlen], dtype=torch.int64).cumsum(dim=0)
-    decoding_batches = torch.tensor([0], dtype=torch.int64)
+    decoding_batches = torch.tensor([2], dtype=torch.int64)
 
     cache = torch.zeros([bs * kvlen, num_layer, 2, num_kv_heads, head_dim], dtype=torch.int8)
-    scale = torch.zeros([bs * kvlen, num_layer, 2, num_kv_heads, head_dim // quant_group])
+    scale = torch.zeros([bs * kvlen, num_layer, 2, num_kv_heads, head_dim // quant_group], dtype=torch.float16)
     start_pos = torch.full([bs], 0, dtype=torch.int64)
     cachestarts = torch.arange(0, bs * kvlen, kvlen, dtype=torch.int64)
 
@@ -192,26 +198,47 @@ if __name__ == "__main__":
     kvstarts[1:] = start_pos.cumsum(0)
     kvstarts = kvstarts + seqstarts
 
-    max_seqlen = torch.tensor([seqlen])
-    max_kvlen = torch.tensor([seqlen])
+    max_seqlen = torch.tensor([seqlen], dtype=torch.float16)
+    max_kvlen = torch.tensor([seqlen], dtype=torch.float16)
 
     test_op1 = TestModule1(num_heads, num_kv_heads, head_dim, True, num_layer, layer_idx, quant_bit, quant_group)
     test_op2 = TestModule1(num_heads, num_kv_heads, head_dim, True, num_layer, layer_idx, 0, quant_group)
 
-    test_op1.forward(q, k, v, seqstarts, kvstarts, cachestarts, start_pos, decoding_batches, max_seqlen, max_kvlen, cache, scale, attn_mask)
+    output = test_op1.forward(q, k, v, seqstarts, kvstarts, cachestarts, start_pos, decoding_batches, max_seqlen, max_kvlen, cache, scale, attn_mask)
     
-    model_str1 = torch.onnx.export_to_pretty_string(
-       test_op1, (q, k, v, seqstarts, kvstarts, cachestarts, start_pos, decoding_batches, max_seqlen, max_kvlen, cache, scale),
-       "MultiHeadAttention1.onnx", opset_version=11)
-    model_str2 = torch.onnx.export_to_pretty_string(
-       test_op1, (q, k, v, seqstarts, kvstarts, cachestarts, start_pos, decoding_batches, max_seqlen, max_kvlen, cache, scale, attn_mask),
-       "MultiHeadAttention2.onnx", opset_version=11)
+        
+    q.numpy().tofile(                              "../../models/MHACache/{}/0input_q-{}-{}.bin".format(name, ModelUtils.getShape(q), ModelUtils.getType(q)))
+    k.numpy().tofile(                              "../../models/MHACache/{}/1input_k-{}-{}.bin".format(name, ModelUtils.getShape(k), ModelUtils.getType(k)))
+    v.numpy().tofile(                              "../../models/MHACache/{}/2input_v-{}-{}.bin".format(name, ModelUtils.getShape(v), ModelUtils.getType(v)))
+    seqstarts.numpy().tofile(              "../../models/MHACache/{}/3input_seqstarts-{}-{}.bin".format(name, ModelUtils.getShape(seqstarts), ModelUtils.getType(seqstarts)))
+    kvstarts.numpy().tofile(                "../../models/MHACache/{}/4input_kvstarts-{}-{}.bin".format(name, ModelUtils.getShape(kvstarts), ModelUtils.getType(kvstarts)))
+    cachestarts.numpy().tofile(          "../../models/MHACache/{}/5input_cachestarts-{}-{}.bin".format(name, ModelUtils.getShape(cachestarts), ModelUtils.getType(cachestarts)))
+    start_pos.numpy().tofile(              "../../models/MHACache/{}/6input_start_pos-{}-{}.bin".format(name, ModelUtils.getShape(start_pos), ModelUtils.getType(start_pos)))
+    decoding_batches.numpy().tofile("../../models/MHACache/{}/7input_decoding_batches-{}-{}.bin".format(name, ModelUtils.getShape(decoding_batches), ModelUtils.getType(decoding_batches)))
+    max_seqlen.numpy().tofile(            "../../models/MHACache/{}/8input_max_seqlen-{}-{}.bin".format(name, ModelUtils.getShape(max_seqlen), ModelUtils.getType(max_seqlen)))
+    max_kvlen.numpy().tofile(              "../../models/MHACache/{}/9input_max_kvlen-{}-{}.bin".format(name, ModelUtils.getShape(max_kvlen), ModelUtils.getType(max_kvlen)))
+    cache.numpy().tofile(                     "../../models/MHACache/{}/10input_cache-{}-{}.bin".format(name, ModelUtils.getShape(cache), ModelUtils.getType(cache)))
+    scale.numpy().tofile(                     "../../models/MHACache/{}/11input_scale-{}-{}.bin".format(name, ModelUtils.getShape(scale), ModelUtils.getType(scale)))
+    attn_mask.numpy().tofile(             "../../models/MHACache/{}/12input_attn_mask-{}-{}.bin".format(name, ModelUtils.getShape(attn_mask), ModelUtils.getType(attn_mask)))
     
-    cache = cache.to(q)
-    model_str3 = torch.onnx.export_to_pretty_string(
-       test_op2, (q, k, v, seqstarts, kvstarts, cachestarts, start_pos, decoding_batches, max_seqlen, max_kvlen, cache, None, attn_mask),
-       "MultiHeadAttention3.onnx", opset_version=11)
+    output.detach().numpy().tofile("../../models/MHACache/{}/output.bin".format(name))
 
-    print(model_str1)
-    print(model_str2)
-    print(model_str3)
+    model_str1 = torch.onnx.export(
+        test_op1, (q, k, v, seqstarts, kvstarts, cachestarts, start_pos, decoding_batches, max_seqlen, max_kvlen, cache, scale),
+        "../../models/MHACache/{}/model.onnx".format(name), opset_version=11)
+
+    # model_str1 = torch.onnx.export_to_pretty_string(
+    #    test_op1, (q, k, v, seqstarts, kvstarts, cachestarts, start_pos, decoding_batches, max_seqlen, max_kvlen, cache, scale),
+    #    "MultiHeadAttention1.onnx", opset_version=11)
+    # model_str2 = torch.onnx.export_to_pretty_string(
+    #    test_op1, (q, k, v, seqstarts, kvstarts, cachestarts, start_pos, decoding_batches, max_seqlen, max_kvlen, cache, scale, attn_mask),
+    #    "MultiHeadAttention2.onnx", opset_version=11)
+    
+    # cache = cache.to(q)
+    # model_str3 = torch.onnx.export_to_pretty_string(
+    #    test_op2, (q, k, v, seqstarts, kvstarts, cachestarts, start_pos, decoding_batches, max_seqlen, max_kvlen, cache, None, attn_mask),
+    #    "MultiHeadAttention3.onnx", opset_version=11)
+
+    # print(model_str1)
+    # print(model_str2)
+    # print(model_str3)
