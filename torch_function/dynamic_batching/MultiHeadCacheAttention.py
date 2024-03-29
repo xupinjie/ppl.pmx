@@ -100,8 +100,11 @@ class MultiHeadCacheAttention(torch.autograd.Function):
             cache, scale, num_layer, layer_idx,
             quant_bit, quant_group, 1,
             cache_mode, cache_layout)
+
         TensorDumper.dump(key.detach(), "key_value_cache_key")
         TensorDumper.dump(value.detach(), "key_value_cache_value")
+        TensorDumper.dump(cache.detach(), "key_value_cache_cache")
+        TensorDumper.dump(scale.detach(), "key_value_cache_scale")
         
         output = multi_head_attention(
             query, key, value, seqstarts,
@@ -166,7 +169,7 @@ if __name__ == "__main__":
                                         self.num_heads, self.head_dim, self.is_causal, self.num_kv_heads,
                                         self.num_layer, self.layer_idx, self.quant_bit, self.quant_group)
 
-
+    torch.manual_seed(1)
     name = "case2"
     bs = 2
     seqlen = 8

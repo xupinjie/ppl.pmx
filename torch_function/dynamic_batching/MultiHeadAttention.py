@@ -117,7 +117,7 @@ if __name__ == "__main__":
                                     max_seqlen, max_kvlen, attn_mask,
                                     self.num_heads, self.head_dim, self.is_causal)
 
-
+    torch.manual_seed(1)
     bs = 2
     seqlen = 16
     num_heads = 32

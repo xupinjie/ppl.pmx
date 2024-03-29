@@ -3,6 +3,9 @@ import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
 
+import sys
+sys.path.append("../")  # 添加上一级目录到sys.path
+from model_zoo import ModelUtils
 
 class RowParallelLinear(torch.autograd.Function):
     @staticmethod
@@ -73,9 +76,9 @@ if __name__ == "__main__":
 
             self.in_features_per_partition = in_features // world_size
 
-            self.weight = nn.Parameter(torch.ones(self.out_features, self.in_features_per_partition))
+            self.weight = nn.Parameter(torch.randn(self.out_features, self.in_features_per_partition, dtype=torch.float16))
             if bias_term:
-                self.bias = nn.Parameter(torch.zeros(self.out_features))
+                self.bias = nn.Parameter(torch.randn(self.out_features, dtype=torch.float16))
             else:
                 self.register_parameter("bias", None)
 
@@ -84,13 +87,24 @@ if __name__ == "__main__":
             return row_parallel_linear(
                 X, self.weight, self.bias, self.proc_group,
                 self.in_features, self.out_features, self.input_is_parallel)
+    torch.manual_seed(1)
+    name = "case2"
+    seq_len = 16
+    in_feature = 4096
+    ou_feature = 4096
+
+    test_op1 = TestModule1(None, in_feature, ou_feature, False, True)
+
+    input = torch.randn([seq_len, in_feature], dtype=torch.float16)
+    output = test_op1.forward(input)
+
+    TensorDumper = ModelUtils.__TensorDumperV2__("../models/RowParallelLinear/{}".format(name))
+    TensorDumper.dump(input, "input".format(name))
+    TensorDumper.dump(output.detach(), "output".format(name))
+    torch.onnx.export(test_op1, (input), "../models/RowParallelLinear/{}/model.onnx".format(name), opset_version=11)
 
 
-    test_op1 = TestModule1(None, 1024, 4096, True, True)
+    # model_str1 = torch.onnx.export_to_pretty_string(
+    #     test_op1, (input), "RowParallelLinear1.onnx", opset_version=11)
 
-    input = torch.ones([8, 1024])
-
-    model_str1 = torch.onnx.export_to_pretty_string(
-        test_op1, (input), "RowParallelLinear1.onnx", opset_version=11)
-
-    print(model_str1)
+    # print(model_str1)

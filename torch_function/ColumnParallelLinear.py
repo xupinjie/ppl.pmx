@@ -3,6 +3,9 @@ import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
 
+import sys
+sys.path.append("../")  # 添加上一级目录到sys.path
+from model_zoo import ModelUtils
 
 class ColumnParallelLinear(torch.autograd.Function):
     @staticmethod
@@ -84,9 +87,9 @@ if __name__ == "__main__":
 
             self.out_features_per_partition = out_features // world_size
 
-            self.weight = nn.Parameter(torch.ones(self.out_features_per_partition, self.in_features))
+            self.weight = nn.Parameter(torch.randn(self.out_features_per_partition, self.in_features, dtype=torch.float16))
             if bias_term:
-                self.bias = nn.Parameter(torch.zeros(self.out_features_per_partition))
+                self.bias = nn.Parameter(torch.randn(self.out_features_per_partition, dtype=torch.float16))
             else:
                 self.register_parameter("bias", None)
 
@@ -96,12 +99,23 @@ if __name__ == "__main__":
                 X, self.weight, self.bias, self.proc_group,
                 self.in_features, self.out_features)
 
+    torch.manual_seed(1)
+    name = "case2"
+    seq_len = 16
+    in_feature = 4096
+    ou_feature = 4096
 
-    test_op1 = TestModule1(None, 1024, 4096, True, False)
+    test_op1 = TestModule1(None, in_feature, ou_feature, False, False)
 
-    input = torch.ones([8, 1024])
+    input = torch.randn([seq_len, in_feature], dtype=torch.float16)
+    output = test_op1.forward(input)
 
-    model_str1 = torch.onnx.export_to_pretty_string(
-        test_op1, (input), "ColumnParallelLinear1.onnx", opset_version=11)
+    TensorDumper = ModelUtils.__TensorDumperV2__("../models/ColumnParallelLinear/{}".format(name))
+    TensorDumper.dump(input, "input".format(name))
+    TensorDumper.dump(output.detach(), "output".format(name))
+    torch.onnx.export(test_op1, (input), "../models/ColumnParallelLinear/{}/model.onnx".format(name), opset_version=11)
 
-    print(model_str1)
+    # model_str1 = torch.onnx.export_to_pretty_string(
+    #     test_op1, (input), "ColumnParallelLinear1.onnx", opset_version=11)
+
+    # print(model_str1)

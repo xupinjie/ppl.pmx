@@ -64,9 +64,9 @@ def getType(X):
 
 class __TensorDumperV2__:
     call_idx = 0
-    def __init__(self):
+    def __init__(self, dir="."):
         self.enable_dump = True
-        self.dir = "."
+        self.dir = dir
         self.step = 0
         self.dump_steps = []
 
