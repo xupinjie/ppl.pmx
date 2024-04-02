@@ -141,6 +141,26 @@ def multi_head_cache_attention(
 
 
 if __name__ == "__main__":
+    # params: head, causual,  
+    # attnmask, group not supported yet, layout todo
+    num_heads = int (sys.argv[1]) if len(sys.argv) >= 2 else 32
+    num_kv_heads = int (sys.argv[2]) if len(sys.argv) >= 3 else 32
+    is_causal = int (sys.argv[3]) if len(sys.argv) >= 4 else 1
+    seqlen = int (sys.argv[4]) if len(sys.argv) >= 5 else 1
+    attn_mask_len = int (sys.argv[5]) if len(sys.argv) >= 6 else 0	
+    prefill_flag = 0
+    if seqlen>1:
+        prefill_flag = 1
+ 
+    #todo, fixed yet
+    bs =1 #todo for bs>1 decoder
+    head_dim = 128
+    kvlen = 32
+    num_layer = 2
+    layer_idx = 1
+    quant_group = 8
+    quant_bit = 8
+   
     class TestModule1(torch.nn.Module):
         def __init__(self, num_heads: int, num_kv_heads: int, head_dim: int, is_causal: bool = True,
                      num_layer: int = 1, layer_idx: int = 0,
@@ -150,6 +170,7 @@ if __name__ == "__main__":
             self.num_kv_heads = num_kv_heads
             self.head_dim = head_dim
             self.is_causal = is_causal
+            print(" op cau is ",self.is_causal)
             self.num_layer = num_layer
             self.layer_idx = layer_idx
             self.quant_bit = quant_bit
@@ -167,47 +188,50 @@ if __name__ == "__main__":
                                         cachestarts, start_pos, decoding_batches,
                                         max_seqlen, max_kvlen, cache, scale, attn_mask,
                                         self.num_heads, self.head_dim, self.is_causal, self.num_kv_heads,
-                                        self.num_layer, self.layer_idx, self.quant_bit, self.quant_group)
+                                        self.num_layer, self.layer_idx, self.quant_bit, self.quant_group,cache_layout=3)
 
     torch.manual_seed(1)
     name = "case2"
-    bs = 2
-    seqlen = 8
-    kvlen = 32
-    num_heads = 32
-    num_kv_heads = 32
-    head_dim = 128
 
-    num_layer = 2
-    layer_idx = 1
-    quant_group = 8
-    quant_bit = 8
 
     q = torch.randn(bs * seqlen, num_heads, head_dim, dtype=torch.float16)
     k = torch.randn(bs * seqlen, num_kv_heads, head_dim, dtype=torch.float16)
     v = torch.randn(bs * seqlen, num_kv_heads, head_dim, dtype=torch.float16)
+	
+	#prefill,todo
+    attn_mask = torch.randn(bs * seqlen, bs * seqlen, dtype=torch.float16)
 
-    attn_mask = torch.zeros(bs * seqlen, bs * seqlen, dtype=torch.float16)
+    seqstarts = torch.tensor([0, seqlen], dtype=torch.int64).cumsum(dim=0)
+    print(seqstarts)
+    if prefill_flag>0:
+        decoding_batches = torch.tensor([0], dtype=torch.int64)
+    else :
+        decoding_batches = torch.tensor([bs], dtype=torch.int64)
 
-    seqstarts = torch.tensor([0, seqlen, seqlen], dtype=torch.int64).cumsum(dim=0)
-    decoding_batches = torch.tensor([2], dtype=torch.int64)
-
-    cache = torch.zeros([bs * kvlen, num_layer, 2, num_kv_heads, head_dim], dtype=torch.int8)
-    scale = torch.zeros([bs * kvlen, num_layer, 2, num_kv_heads, head_dim // quant_group], dtype=torch.float16)
+    cache = torch.zeros([ num_layer, 2, num_kv_heads, bs * kvlen,head_dim], dtype=torch.int8)
+    scale = torch.zeros([ num_layer, 2, num_kv_heads, bs * kvlen,head_dim // quant_group], dtype=torch.float16)
     start_pos = torch.full([bs], 0, dtype=torch.int64)
+    if prefill_flag==0:
+        start_pos[0] = 8
+    #print(start_pos)
     cachestarts = torch.arange(0, bs * kvlen, kvlen, dtype=torch.int64)
+    print(cachestarts)
 
     kvstarts = torch.zeros([bs + 1], dtype=torch.int64)
     kvstarts[1:] = start_pos.cumsum(0)
     kvstarts = kvstarts + seqstarts
+    print(kvstarts)
 
-    max_seqlen = torch.tensor([seqlen], dtype=torch.float16)
-    max_kvlen = torch.tensor([seqlen], dtype=torch.float16)
+    max_seqlen = torch.tensor([seqlen])
+    max_kvlen = torch.tensor([kvstarts[-1]])
 
-    test_op1 = TestModule1(num_heads, num_kv_heads, head_dim, True, num_layer, layer_idx, quant_bit, quant_group)
-    test_op2 = TestModule1(num_heads, num_kv_heads, head_dim, True, num_layer, layer_idx, 0, quant_group)
+    test_op1 = TestModule1(num_heads, num_kv_heads, head_dim, (is_causal>0), num_layer, layer_idx, quant_bit, quant_group)
+    test_op2 = TestModule1(num_heads, num_kv_heads, head_dim, (is_causal>0), num_layer, layer_idx, 0, quant_group)
 
-    output = test_op1.forward(q, k, v, seqstarts, kvstarts, cachestarts, start_pos, decoding_batches, max_seqlen, max_kvlen, cache, scale, attn_mask)
+    if attn_mask_len>0:
+    	output = test_op1.forward(q, k, v, seqstarts, kvstarts, cachestarts, start_pos, decoding_batches, max_seqlen, max_kvlen, cache, scale, attn_mask)
+    else:
+	    output = test_op1.forward(q, k, v, seqstarts, kvstarts, cachestarts, start_pos, decoding_batches, max_seqlen, max_kvlen, cache, scale)#, attn_mask)
     
         
     q.numpy().tofile(                              "../../models/MHACache/{}/0input_q-{}-{}.bin".format(name, ModelUtils.getShape(q), ModelUtils.getType(q)))
@@ -222,13 +246,22 @@ if __name__ == "__main__":
     max_kvlen.numpy().tofile(              "../../models/MHACache/{}/9input_max_kvlen-{}-{}.bin".format(name, ModelUtils.getShape(max_kvlen), ModelUtils.getType(max_kvlen)))
     cache.numpy().tofile(                     "../../models/MHACache/{}/10input_cache-{}-{}.bin".format(name, ModelUtils.getShape(cache), ModelUtils.getType(cache)))
     scale.numpy().tofile(                     "../../models/MHACache/{}/11input_scale-{}-{}.bin".format(name, ModelUtils.getShape(scale), ModelUtils.getType(scale)))
-    attn_mask.numpy().tofile(             "../../models/MHACache/{}/12input_attn_mask-{}-{}.bin".format(name, ModelUtils.getShape(attn_mask), ModelUtils.getType(attn_mask)))
+    
+    if attn_mask_len>0:
+	    attn_mask.numpy().tofile(             "../../models/MHACache/{}/12input_attn_mask-{}-{}.bin".format(name, ModelUtils.getShape(attn_mask), ModelUtils.getType(attn_mask)))
+	
     
     output.detach().numpy().tofile("../../models/MHACache/{}/output.bin".format(name))
 
-    model_str1 = torch.onnx.export(
-        test_op1, (q, k, v, seqstarts, kvstarts, cachestarts, start_pos, decoding_batches, max_seqlen, max_kvlen, cache, scale),
-        "../../models/MHACache/{}/model.onnx".format(name), opset_version=11)
+    if attn_mask_len>0:
+    	model_str1 = torch.onnx.export(
+       	    test_op1, (q, k, v, seqstarts, kvstarts, cachestarts, start_pos, decoding_batches, max_seqlen, max_kvlen, cache, scale,attn_mask),
+            "../../models/MHACache/{}/model.onnx".format(name), opset_version=11)
+    else:
+	    model_str1 = torch.onnx.export(
+       	    test_op1, (q, k, v, seqstarts, kvstarts, cachestarts, start_pos, decoding_batches, max_seqlen, max_kvlen, cache, scale),#,attn_mask),
+            "../../models/MHACache/{}/model.onnx".format(name), opset_version=11)
+
 
     # model_str1 = torch.onnx.export_to_pretty_string(
     #    test_op1, (q, k, v, seqstarts, kvstarts, cachestarts, start_pos, decoding_batches, max_seqlen, max_kvlen, cache, scale),
