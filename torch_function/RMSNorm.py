@@ -1,5 +1,11 @@
 import torch
+from pathlib import Path
+import os
 
+import sys
+sys.path.append("../")  # 添加上一级目录到sys.path
+from model_zoo import ModelUtils
+TensorDumper = ModelUtils.__TensorDumperV2__()
 
 class RMSNorm(torch.autograd.Function):
     @staticmethod
@@ -92,9 +98,14 @@ if __name__ == "__main__":
 
     # test_op1 = TestModule1(4096, 1e-6)
 
-    name ="case1"
+    name ="case3"
     seq  = 8
-    dim  = 4096
+    dim  = 2048
+    
+    folder = '../models/RMSNorm/{}'.format(name)
+    if not os.path.exists(folder):
+        Path().mkdir(parents=True)
+    
 
     test_op2 = TestModule2(dim, 1e-6)
 
@@ -102,9 +113,8 @@ if __name__ == "__main__":
     skip = torch.randn([seq, dim], dtype=torch.float16)
 
     output1, output2 = test_op2.forward(input, skip)
-
-    input.numpy().tofile("../models/RMSNorm/{}/input-input.bin".format(name))
-    skip.numpy().tofile("../models/RMSNorm/{}/input-skip.bin".format(name))
+    input.numpy().tofile("../models/RMSNorm/{}/input-{}-{}.bin".format(name, ModelUtils.getShape(input), ModelUtils.getType(input)))
+    skip.numpy().tofile("../models/RMSNorm/{}/skip-{}-{}.bin".format(name, ModelUtils.getShape(skip), ModelUtils.getType(skip)))
 
     output1.detach().numpy().tofile("../models/RMSNorm/{}/output1.bin".format(name))
     output2.detach().numpy().tofile("../models/RMSNorm/{}/output2.bin".format(name))

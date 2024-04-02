@@ -164,3 +164,4 @@ cython_debug/
 .vscode/
 
 models
+interlm_1_8b

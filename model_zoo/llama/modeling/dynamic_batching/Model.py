@@ -14,7 +14,7 @@ from ModelParams import ModelParams
 import ModelUtils
 from ModelParallel import ColumnParallelLinear, RowParallelLinear, ParallelEmbedding
 
-TensorDumper = ModelUtils.__TensorDumper__()
+TensorDumper = ModelUtils.__TensorDumperV3__()
 
 class RMSNorm(torch.nn.Module):
     def __init__(self, dim: int, eps: float = 1e-6):
@@ -102,10 +102,17 @@ class Attention(nn.Module):
         expanded_shape = (0, -1, self.head_dim)
         if self.fused_qkv:
             xqkv = self.wqkv(x)
+            TensorDumper.dump(xqkv.detach(), "/layers.{}/wqkv/ColumnParallelLinear".format(self.layer_id), 0)
+            
             xqkv = PMX.reshape(xqkv, expanded_shape)
+            TensorDumper.dump(xqkv.detach(), "/layers.{}/Reshape".format(self.layer_id), 0)
+
             split_size = (self.num_local_heads, self.num_local_kv_heads, self.num_local_kv_heads)
             # TensorDumper.dump(xqkv, "layer{}_reshaped_xqkv".format(self.layer_id))
             xq, xk, xv = torch.split(xqkv, split_size, -2)
+            TensorDumper.dump(xq.detach(), "/layers.{}/Split".format(self.layer_id), 0)
+            TensorDumper.dump(xk.detach(), "/layers.{}/Split".format(self.layer_id), 1)
+            TensorDumper.dump(xv.detach(), "/layers.{}/Split".format(self.layer_id), 2)
         else:
             xq, xk, xv = self.wq(x), self.wk(x), self.wv(x)
             xq = PMX.reshape(xq, expanded_shape)
@@ -123,8 +130,8 @@ class Attention(nn.Module):
                                         max_position_embeddings=self.max_position_embeddings,
                                         theta=self.rope_theta, scaling_type=self.rope_scaling_type,
                                         scaling_factor=self.rope_scaling_factor)
-        # TensorDumper.dump(xq, "layer{}_rotary_position_embedding_out_xq".format(self.layer_id))
-        # TensorDumper.dump(xk, "layer{}_rotary_position_embedding_out_xk".format(self.layer_id))
+        TensorDumper.dump(xq.detach(), "/layers.{}/RotaryPositionEmbedding".format(self.layer_id), 0)
+        TensorDumper.dump(xk.detach(), "/layers.{}/RotaryPositionEmbedding".format(self.layer_id), 1)
 
         if self.fused_kvcache:
             attn = PMX.dynamic_batching.multi_head_cache_attention(
@@ -144,6 +151,7 @@ class Attention(nn.Module):
                 quant_group=self.cache_quant_group,
                 cache_mode=self.cache_mode,
                 cache_layout=self.cache_layout)
+            TensorDumper.dump(attn.detach(), "/layers.{}/MultiHeadCacheAttention".format(self.layer_id), 0)
         else:
             keys, values = PMX.dynamic_batching.key_value_cache(
                                             xk, xv, seqstarts, kvstarts,
@@ -172,9 +180,11 @@ class Attention(nn.Module):
                                             is_causal=self.auto_causal,
                                             num_kv_heads=0 if self.friendly_gqa else self.num_local_kv_heads)
         attn = PMX.reshape(attn, (0, -1))
+        TensorDumper.dump(attn.detach(), "/layers.{}/Reshape_1".format(self.layer_id), 0)
         # TensorDumper.dump(attn, "layer{}_multi_head_attention_out".format(self.layer_id))
 
         output = self.wo(attn)
+        TensorDumper.dump(output.detach(), "/layers.{}/wo/RowParallelLinear".format(self.layer_id), 0)
         # TensorDumper.dump(output, "layer{}_reshaped_wo_out".format(self.layer_id))
 
         return output
@@ -212,8 +222,11 @@ class FeedForward(nn.Module):
     def forward(self, x):
         if self.fused_ffn_glu:
             x13 = self.wu(x)
+            TensorDumper.dump(x13.detach(), "/layers.{}/wu/ColumnParallelLinear".format(self.layer_id), 0)
             # TensorDumper.dump(x13, "layer{}_ffn_wu".format(self.layer_id))
+
             x13 = PMX.swiglu(x13)
+            TensorDumper.dump(x13.detach(), "/layers.{}/SwiGLU".format(self.layer_id), 0)
         else:
             x1 = self.w1(x)
             # TensorDumper.dump(x1, "layer{}_ffn_w1".format(self.layer_id))
@@ -222,6 +235,7 @@ class FeedForward(nn.Module):
             x13 = PMX.silu(x1, x3)
         # TensorDumper.dump(x13, "layer{}_ffn_mul_silu".format(self.layer_id))
         output = self.w2(x13)
+        TensorDumper.dump(output.detach(), "/layers.{}/w2/RowParallelLinear".format(self.layer_id), 0)
         # TensorDumper.dump(output, "layer{}_ffn_w2".format(self.layer_id))
         return output
 
@@ -265,15 +279,18 @@ class TransformerBlock(nn.Module):
                 max_seqlen: torch.Tensor, max_kvlen: torch.Tensor,
                 kv_cache: torch.Tensor, kv_sacle: torch.Tensor = None):
         norm, x = self.attention_norm(x, skip)
-        # TensorDumper.dump(norm, "layer{}_attention_norm_out".format(self.layer_id))
-        # TensorDumper.dump(x, "layer{}_attention_norm_skip_out".format(self.layer_id))
+        TensorDumper.dump(norm.detach(), "/layers.{}/attention_norm/RMSNorm".format(self.layer_id), 0)
+        TensorDumper.dump(x.detach(), "/layers.{}/attention_norm/RMSNorm".format(self.layer_id), 1)
+        
         attn = self.attention.forward(norm, attn_mask, seqstarts, kvstarts,
                                       cachestarts, decoding_batches,
                                       start_pos, max_seqlen, max_kvlen,
                                       kv_cache, kv_sacle)
+        
         norm, h = self.ffn_norm(x, attn)
-        # TensorDumper.dump(norm, "layer{}_ffn_norm_out".format(self.layer_id))
-        # TensorDumper.dump(h, "layer{}_ffn_norm_skip_out".format(self.layer_id))
+        TensorDumper.dump(norm.detach(), "/layers.{}/ffn_norm/RMSNorm".format(self.layer_id), 0)
+        TensorDumper.dump(h.detach(), "/layers.{}/ffn_norm/RMSNorm".format(self.layer_id), 1)
+
         ffn = self.feed_forward.forward(norm)
         return h, ffn
 
@@ -333,10 +350,7 @@ class Transformer(nn.Module):
                 cachestarts: torch.Tensor, decoding_batches: torch.Tensor,
                 start_pos: torch.Tensor, max_seqlen: torch.Tensor,  max_kvlen: torch.Tensor,
                 kv_cache: torch.Tensor, kv_scale: torch.Tensor = None):
-        h = self.tok_embeddings(tokens)
-        # TensorDumper.dump(h, "emb_out")
-
-        _kv_scale = kv_scale
+        
         TensorDumper.dump(tokens, "token_ids")
         if attn_mask is not None:
             TensorDumper.dump(attn_mask, "attn_mask")
@@ -353,6 +367,11 @@ class Transformer(nn.Module):
         TensorDumper.dump(kv_cache, "kv_cache")
         if kv_scale is not None:
             TensorDumper.dump(kv_scale, "kv_scale")
+        
+        h = self.tok_embeddings(tokens)
+        TensorDumper.dump(h, "/tok_embeddings/ParallelEmbedding")
+
+        _kv_scale = kv_scale
 
         norm = None
         for layer in self.layers:
@@ -361,10 +380,17 @@ class Transformer(nn.Module):
                             kv_cache, _kv_scale)
 
         h, norm = self.norm(h, norm)
+        TensorDumper.dump(h.detach(), "/norm/RMSNorm", 0)
+        TensorDumper.dump(norm.detach(), "/norm/RMSNorm", 1)
         # TensorDumper.dump(h, "last_rms_norm")
+
         gathered_h = torch.index_select(h, 0, seqstarts[1:] - 1)
+        TensorDumper.dump(gathered_h.detach(), "/Gather", 0)
         # TensorDumper.dump(gathered_h, "gathered_h")
+
         output = self.output(gathered_h)  # only compute last logits
+        TensorDumper.dump(output.detach(), "/output/ColumnParallelLinear", 0)
+
         # TensorDumper.dump(output, "logits_before_cast")
         output = output.float()
         TensorDumper.dump(output, "logits")

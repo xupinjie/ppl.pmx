@@ -12,6 +12,8 @@ import llama.modeling.Loader as Loader
 from Tokenizer import Tokenizer
 from ModelParams import ModelParams
 
+# OMP_NUM_THREADS=1 torchrun --nproc_per_node 1 Demo.py --ckpt_dir ~/LLM_models/interlm2_1_8/ --tokenizer_path ~/LLM_models/interlm2_1_8/tokenizer.model --fused_qkv 1 --fused_kvcache 1 --auto_causal 1 --quantized_cache 1 --dynamic_batching 1 --seqlen_scale_up 1 --max_gen_len 256 --batch 1 --dump_steps 0 --dump_tensor_path ../../../interlm_1_8b
+
 def main(
     ckpt_dir: str,
     tokenizer_path: str,
