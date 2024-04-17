@@ -10,14 +10,14 @@ import torch.distributed as dist
 
 sys.path.append(os.path.dirname(os.path.realpath(__file__)) + "/../../..")
 
-from ModelParams import ModelParams, VisionModelParams
+from ModelParams import ModelParams, ClipTextModelParams
 from clip_text.modeling.static_batching.Model import TensorDumper, ClipTextTransformer
 import ModelParallel
 
 
 def load(
     ckpt_dir: str,
-    model_params: ModelParams,
+    model_params: ClipTextModelParams,
     friendly_gqa: bool, # done gqa by repeating key and value by key_value_cache op
     fused_qkv: bool, # fuse qkv linear
     auto_causal: bool, # causal mask is auto done by attention op, no need to pass additional mask to the model
@@ -58,7 +58,7 @@ def load(
                         attn_wo_bias_term,
                         ffn_linear_bias_term,
                         proc_group=proc_group)
-    torch.set_default_tensor_type(torch.HalfTensor)
+    torch.set_default_tensor_type(torch.FloatTensor)
 
     model.load_state_dict(checkpoint)
 

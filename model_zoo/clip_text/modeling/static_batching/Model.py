@@ -10,7 +10,7 @@ from typing import Mapping, Any, Optional
 sys.path.append(os.path.dirname(os.path.realpath(__file__)) + "/../../..")
 
 import torch_function as PMX
-from ModelParams import ModelParams, VisionModelParams
+from ModelParams import ModelParams, ClipTextModelParams
 import ModelUtils
 from ModelParallel import ColumnParallelLinear, RowParallelLinear, ParallelEmbedding
 from ModelLayers import Linear
@@ -40,7 +40,7 @@ class SkipLayerNorm(torch.nn.Module):
 class Attention(nn.Module):
     def __init__(
             self,
-            args: ModelParams,
+            args: ClipTextModelParams,
             layer_id: int,
             friendly_gqa: bool,
             fused_qkv: bool,
@@ -116,7 +116,7 @@ class Attention(nn.Module):
 class FeedForward(nn.Module):
     def __init__(
         self,
-        args: ModelParams,
+        args: ClipTextModelParams,
         layer_id: int,
         linear_bias_term: bool,
         proc_group: dist.ProcessGroup
@@ -144,7 +144,7 @@ class FeedForward(nn.Module):
 
 class TransformerBlock(nn.Module):
     def __init__(self, layer_id: int,
-                 args: ModelParams,
+                 args: ClipTextModelParams,
                  friendly_gqa: bool,
                  fused_qkv: bool,
                  attn_wqkv_bias_term: bool,
@@ -257,10 +257,11 @@ class ClipTextTransformer(nn.Module):
                 proc_group=proc_group))
 
     @torch.inference_mode()
-    def forward(self, input_ids: torch.Tensor, attn_mask: torch.Tensor):
-        # input_ids: shape[2, 7]
+    def forward(self, input_ids: torch.Tensor, attn_mask: Optional[torch.Tensor]=None):
+        input_shape = input_ids.size()
+        input_ids = input_ids.view(-1, input_shape[-1])
         h = self.embeddings(input_ids=input_ids, position_ids=None)
-        TensorDumper.dump(h, "pmx_embeddings")
+        # TensorDumper.dump(h, "pmx_embeddings")
 
         norm = None
         for layer in self.layers:
@@ -268,7 +269,7 @@ class ClipTextTransformer(nn.Module):
 
         last_hidden_state = norm+h
         last_hidden_state = self.final_layer_norm(last_hidden_state)
-        TensorDumper.dump(last_hidden_state, "pmx_last_hidden_state_output")
+        # TensorDumper.dump(last_hidden_state, "pmx_last_hidden_state_output")
 
         return last_hidden_state
 

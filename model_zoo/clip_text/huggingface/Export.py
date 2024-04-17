@@ -3,7 +3,7 @@ import sys
 import os
 import json
 import torch
-torch.set_default_tensor_type(torch.HalfTensor)
+torch.set_default_tensor_type(torch.FloatTensor)
 
 from pathlib import Path
 
@@ -30,16 +30,15 @@ def main(
     )
 
     # export model
-    input_ids = torch.ones([2, 7], dtype=torch.int64)
-    attn_mask = torch.empty(0, dtype=torch.float16)
+    input_ids = torch.ones([1, 77], dtype=torch.int32)
 
     # to do: dynamic batch / dump json
     torch.onnx.export(
         model.cpu(),
-        (input_ids, attn_mask),
+        (input_ids),
         os.path.join(export_path, "model.onnx"),
-        input_names=["input_ids", "attn_mask"],
-        output_names=["text_logits"],
+        input_names=["input_ids"],
+        output_names=["text_embeddings"],
         do_constant_folding=True,
         opset_version=11,
     )

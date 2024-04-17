@@ -55,11 +55,11 @@ class VisionModelParams(ModelParams):
 
 @dataclass
 class ClipTextModelParams(ModelParams):
-    hidden_dim: int = 512
-    intermediate_dim: int = 2048
+    hidden_dim: int = 768
+    intermediate_dim: int = 3072
 
     num_layers: int = 12
-    num_heads: int = 8
+    num_heads: int = 12
     num_kv_heads: Optional[int] = None
 
     norm_eps: float = 1e-5
@@ -73,6 +73,6 @@ class ClipTextModelParams(ModelParams):
     # dynamic_batching: bool = True
     auto_causal: bool = True
 
-    projection_dim: int = 512
+    projection_dim: int = 768
     vocab_size: int = 49408
     max_position_embeddings: int = 77
