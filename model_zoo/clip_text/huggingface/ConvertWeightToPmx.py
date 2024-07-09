@@ -23,6 +23,7 @@ import torch
 from pathlib import Path
 
 #python ConvertWeightToPmx.py --input_dir ~/.cache/huggingface/hub/models--openai--clip-vit-base-patch32/snapshots/3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268/ --output_dir ../models
+#python ConvertWeightToPmx.py --input_dir ~/.cache/huggingface/hub/models--runwayml--stable-diffusion-v1-5/snapshots/1d0c4ebf6ff58a5caecab40fa1406526bca4b5b9/text_encoder/ --output_dir ../models
 
 """
 Sample usage:
@@ -61,22 +62,21 @@ def write_pmx_model(model_path, input_base_path):
     pmx_params_dict = {}
     params = read_json((os.path.join(input_base_path, "config.json")))
     # text_config
-    pmx_params_dict['hidden_dim'] = params['text_config']['hidden_size']
-    pmx_params_dict['num_heads'] = params['text_config']['num_attention_heads']
-    pmx_params_dict['num_layers'] = params['text_config']['num_hidden_layers']
-    pmx_params_dict['norm_eps'] = params['text_config']['layer_norm_eps']
-    pmx_params_dict['projection_dim'] = params['text_config']['projection_dim']
-    pmx_params_dict['num_kv_heads'] = params['text_config'].get('num_key_value_heads',
-                                                                  params['text_config']['num_attention_heads'])
-    pmx_params_dict['vocab_size'] = params['text_config']['vocab_size']
-    pmx_params_dict['max_position_embeddings'] = params['text_config']['max_position_embeddings']
+    pmx_params_dict['hidden_dim']     = params['hidden_size']
+    pmx_params_dict['num_heads']      = params['num_attention_heads']
+    pmx_params_dict['num_layers']     = params['num_hidden_layers']
+    pmx_params_dict['norm_eps']       = params['layer_norm_eps']
+    pmx_params_dict['projection_dim'] = params['projection_dim']
+    pmx_params_dict['num_kv_heads']   = params.get('num_key_value_heads', params['num_attention_heads'])
+    pmx_params_dict['vocab_size']     = params['vocab_size']
+    pmx_params_dict['max_position_embeddings'] = params['max_position_embeddings']
 
     # compute intermediate_size
     hidden_dim = pmx_params_dict['hidden_dim']
     multiple_of = params.get("multiple_of", 256)
     ffn_dim_multiplier = params.get("ffn_dim_multiplier", 1)
-    if "intermediate_size" in params['text_config'].keys():
-        pmx_params_dict['intermediate_dim'] = params['text_config'].get('intermediate_size')
+    if "intermediate_size" in params.keys():
+        pmx_params_dict['intermediate_dim'] = params.get('intermediate_size')
     else:
         pmx_params_dict['intermediate_dim'] = compute_intermediate_size(hidden_dim, ffn_dim_multiplier, multiple_of)
     write_json(pmx_params_dict, os.path.join(model_path, "pmx_text_params.json"))
@@ -85,7 +85,6 @@ def write_pmx_model(model_path, input_base_path):
     num_heads = pmx_params_dict['num_heads']
     num_kv_heads = pmx_params_dict['num_kv_heads']
     dims_per_head = hidden_dim // num_heads
-    key_value_dim = dims_per_head * num_kv_heads
 
     # load weights
     def unpermute(w, n_heads=num_heads, dim1=hidden_dim, dim2=hidden_dim):
@@ -94,8 +93,8 @@ def write_pmx_model(model_path, input_base_path):
     hf_model_state_dict, state_dict = {}, {}
     for ckpt_path in sorted(Path(input_base_path).glob("*.bin")):
         hf_model_state_dict.update(torch.load(ckpt_path, map_location="cpu"))
-    for key in hf_model_state_dict.keys():
-        print(key)
+    # for key in hf_model_state_dict.keys():
+    #     print(key)
 
     for layer_i in range(pmx_params_dict['num_layers']):
 
@@ -130,12 +129,10 @@ def write_pmx_model(model_path, input_base_path):
         })
 
     state_dict.update({
-        "embeddings.position_ids": hf_model_state_dict["text_model.embeddings.position_ids"],
         "embeddings.token_embedding.weight": hf_model_state_dict["text_model.embeddings.token_embedding.weight"],
         "embeddings.position_embedding.weight": hf_model_state_dict["text_model.embeddings.position_embedding.weight"],
         "final_layer_norm.weight": hf_model_state_dict["text_model.final_layer_norm.weight"], # huggingface misspelling
         "final_layer_norm.bias": hf_model_state_dict["text_model.final_layer_norm.bias"], # huggingface misspelling
-        "text_projection.weight": hf_model_state_dict["text_projection.weight"]
     })
     torch.save(state_dict, os.path.join(model_path, "model.pth"))
 

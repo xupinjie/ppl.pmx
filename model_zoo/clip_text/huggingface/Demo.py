@@ -16,17 +16,18 @@ from ModelParams import ClipTextModelParams
 def ref():
     from transformers import CLIPTokenizer, CLIPTextModel
 
-    # model = CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14")
-    # tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")
-    model = CLIPTextModel.from_pretrained("openai/clip-vit-base-patch32")
-    tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-base-patch32")
+    model = CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14")
+    tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")
+    # model = CLIPTextModel.from_pretrained("openai/clip-vit-base-patch32")
+    # tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-base-patch32")
 
-    inputs = tokenizer(["a photo of a cat", "a photo of a dog"], padding=True, return_tensors="pt")
+    inputs = tokenizer(["a photo of a cat", "a photo of a dog"], truncation=True, max_length=77, return_length=True,
+                                        return_overflowing_tokens=False, padding="max_length", return_tensors="pt")
 
     outputs = model(**inputs)
     last_hidden_state = outputs.last_hidden_state
     pooled_output = outputs.pooler_output  # pooled (EOS token) states
-    x =last_hidden_state.detach().numpy().tofile("output.bin")
+    last_hidden_state.detach().numpy().tofile("output.bin")
 
     return last_hidden_state, pooled_output
 
@@ -39,7 +40,8 @@ def main(
     dump_tensor_path: str = None,
     dump_steps: List[int] = []
 ):
-    torch.set_default_tensor_type(torch.HalfTensor)
+    # torch.set_default_tensor_type(torch.HalfTensor)
+    torch.set_default_tensor_type(torch.FloatTensor)
 
     with open(Path(ckpt_dir) / "pmx_text_params.json", "r") as f:
         params = json.loads(f.read())
@@ -53,21 +55,22 @@ def main(
     )
 
 
-    torch.set_default_tensor_type(torch.HalfTensor)
+    torch.set_default_tensor_type(torch.FloatTensor)
 
     # input_ids = torch.randint(0, 10, (2, 7), dtype=torch.int64)
-    input_ids = np.fromfile("./datas/step0_input_ids-2_7-int64.bin", dtype=np.int64)
-    input_ids = input_ids.reshape((2, 7))
+    input_ids = np.fromfile("./input_ids.bin", dtype=np.int32)
+    input_ids = input_ids.reshape((batch, 77))
     input_ids = torch.from_numpy(input_ids)
     # print(input_ids)
 
     # attn_mask = torch.empty(0, dtype=torch.float32)
-    attn_mask = np.fromfile("./datas/step0_attention_mask-2_1_7_7-fp32.bin", dtype=np.float32)
-    attn_mask = attn_mask.reshape((2, 1, 7, 7)) + np.zeros((2, 8, 7, 7))
-    attn_mask = torch.from_numpy(attn_mask)
+    # attn_mask = np.fromfile("./datas/step0_attention_mask-2_1_7_7-fp32.bin", dtype=np.float32)
+    # attn_mask = attn_mask.reshape((2, 1, 7, 7)) + np.zeros((2, 8, 7, 7))
+    # attn_mask = torch.from_numpy(attn_mask)
     # print(attn_mask)
 
-    outputs = model.forward(input_ids, attn_mask)
+    outputs = model.forward(input_ids)
+    # print(outputs)
 
 if __name__ == "__main__":
     # ref()
