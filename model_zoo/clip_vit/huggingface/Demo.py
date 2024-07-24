@@ -35,15 +35,17 @@ def main(
     )
 
     attn_mask = torch.empty(0, dtype=torch.float16).to('cuda')
-    pixel_values = torch.ones([batch,3,params.image_size,params.image_size], dtype=torch.float16).to('cuda')
-    #from PIL import Image
-    #import requests
-    #from transformers import AutoProcessor, CLIPVisionModelWithProjection
-    #processor = AutoProcessor.from_pretrained("~/.cache/huggingface/hub/models--openai--clip-vit-base-patch32/snapshots/e6a30b603a447e251fdaca1c3056b2a16cdfebeb")
-    #url = "http://images.cocodataset.org/val2017/000000039769.jpg"
-    #image = Image.open(requests.get(url, stream=True).raw)
-    #inputs = processor(images=image, return_tensors="pt")
-    outputs = model.forward(pixel_values, attn_mask)
+    # pixel_values = torch.ones([batch,3,params.image_size,params.image_size], dtype=torch.float16).to('cuda')
+    
+    from PIL import Image
+    import requests
+    from transformers import AutoProcessor
+    processor = AutoProcessor.from_pretrained("~/.cache/huggingface/hub/models--openai--clip-vit-base-patch32/snapshots/e6a30b603a447e251fdaca1c3056b2a16cdfebeb")
+    url = "http://images.cocodataset.org/val2017/000000039769.jpg"
+    image = Image.open(requests.get(url, stream=True).raw)
+    inputs = processor(images=image, return_tensors="pt")
+    
+    outputs = model.forward(inputs, attn_mask)
     print(outputs)
 
 

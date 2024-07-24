@@ -25,6 +25,8 @@ Sample usage:
 ```
 python convert_hf_weights_to_pmx.py \
     --input_dir /path/to/downloaded/hf/weights/7B --output_dir /output/path
+    
+    ~/.cache/huggingface/hub/models--openai--clip-vit-large-patch14/snapshots/32bd64288804d66eefd0ccbe215aa642df71cc41/
 ```
 
 Thereafter, models can be loaded via:
