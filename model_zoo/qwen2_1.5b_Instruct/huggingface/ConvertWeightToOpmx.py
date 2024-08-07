@@ -87,9 +87,8 @@ def write_pmx_model(model_path, input_base_path):
 
     hf_model_state_dict, state_dict = {}, {}
     for ckpt_path in sorted(Path(input_base_path).glob("*.safetensors")):
-        # hf_model_state_dict.update(load_file("/home/SENSETIME/xupinjie1/.cache/modelscope/hub/qwen/Qwen2-1___5B-Instruct/model.safetensors", device="cpu"))
-        # hf_model_state_dict.update(load_file("/home/SENSETIME/xupinjie1/.cache/modelscope/hub/qwen/Qwen2-1___5B-Instruct/model.safetensors", device="cpu"))
-        hf_model_state_dict = torch.load("mm.pth")
+        hf_model_state_dict.update(load_file("/home/SENSETIME/xupinjie1/.cache/modelscope/hub/qwen/Qwen2-1___5B-Instruct/model.safetensors", device="cpu"))
+        # hf_model_state_dict = torch.load("mm.pth")
         # hf_model_state_dict.update(load_file("mm.pth", device="cpu"))
         # print(hf_model_state_dict.keys())
 
@@ -120,7 +119,7 @@ def write_pmx_model(model_path, input_base_path):
     state_dict.update({
         "tok_embeddings.weight": hf_model_state_dict["model.embed_tokens.weight"],
         "norm.weight": hf_model_state_dict["model.norm.weight"],
-        "output.weight": hf_model_state_dict["lm_head.weight"]
+        # "output.weight": hf_model_state_dict["lm_head.weight"]
         # "output.weight": xx_state_dict["lm_head.weight"]
     })
     print(hf_model_state_dict["model.norm.weight"].shape)
