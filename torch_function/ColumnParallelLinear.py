@@ -3,6 +3,10 @@ import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
 
+import sys
+sys.path.append("../")  # 添加上一级目录到sys.path
+from model_zoo import ModelUtils
+
 
 class ColumnParallelLinear(torch.autograd.Function):
     @staticmethod
@@ -84,9 +88,9 @@ if __name__ == "__main__":
 
             self.out_features_per_partition = out_features // world_size
 
-            self.weight = nn.Parameter(torch.ones(self.out_features_per_partition, self.in_features))
+            self.weight = nn.Parameter(torch.randn(self.out_features_per_partition, self.in_features, dtype=torch.float16))
             if bias_term:
-                self.bias = nn.Parameter(torch.zeros(self.out_features_per_partition))
+                self.bias = nn.Parameter(torch.randn(self.out_features_per_partition, dtype=torch.float16))
             else:
                 self.register_parameter("bias", None)
 
@@ -96,12 +100,20 @@ if __name__ == "__main__":
                 X, self.weight, self.bias, self.proc_group,
                 self.in_features, self.out_features)
 
+    infeatures = 4096
+    outfeatures = 1024
+    seqlen = 1025
+    out_dir = "opmx_ops/linear/{}_in{}_out{}/".format(seqlen, infeatures, outfeatures)
 
-    test_op1 = TestModule1(None, 1024, 4096, True, False)
+    input = torch.randn([seqlen, infeatures], dtype=torch.float16)
+    test_op1 = TestModule1(None, infeatures, outfeatures, True, False)
+    output = test_op1.forward(input)
 
-    input = torch.ones([8, 1024])
+    TensorDumper = ModelUtils.__TensorDumperV2__(out_dir)
+    TensorDumper.dump(input, "input")
+    TensorDumper.dump(output.detach(), "ref")
 
-    model_str1 = torch.onnx.export_to_pretty_string(
-        test_op1, (input), "ColumnParallelLinear1.onnx", opset_version=11)
+    torch.onnx.export(
+        test_op1, (input), out_dir+"model.onnx", opset_version=11)
 
-    print(model_str1)
+    # print(model_str1)
